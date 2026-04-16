@@ -1,0 +1,304 @@
+name: Build & Release
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt6 + deps via apt
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            qt6-base-dev \
+            qt6-webengine-dev \
+            libqt6webenginewidgets6 \
+            libqt6webenginecore6 \
+            qt6-webengine-dev-tools \
+            libgl-dev \
+            libegl-dev \
+            libglu1-mesa-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            cmake \
+            ninja-build \
+            build-essential \
+            dpkg-dev
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -G Ninja
+
+      - name: Build
+        run: cmake --build build --parallel --target nothing-private-browser
+
+      - name: Package .deb
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [[ "$VERSION" == "main" || "$VERSION" == "master" || -z "$VERSION" ]] && VERSION="0.0.0"
+          PKG="dist/nothing-private-browser_${VERSION}_amd64"
+          mkdir -p ${PKG}/DEBIAN \
+                   ${PKG}/usr/local/bin \
+                   ${PKG}/usr/share/applications \
+                   ${PKG}/usr/share/nothing-private-browser
+
+          cp build/nothing-private-browser ${PKG}/usr/local/bin/
+
+          cat > ${PKG}/DEBIAN/control <<EOF
+          Package: nothing-private-browser
+          Version: ${VERSION}
+          Architecture: amd64
+          Maintainer: ernest-tech-house-co-operation <hello@nothingbrowser.dev>
+          Depends: libqt6webenginewidgets6, libqt6widgets6, libqt6network6
+          Description: Nothing Private Browser — Does nothing, except everything that matters.
+          EOF
+
+          cat > ${PKG}/DEBIAN/postinst <<'EOF'
+          #!/bin/sh
+          update-desktop-database /usr/share/applications || true
+          EOF
+          chmod 755 ${PKG}/DEBIAN/postinst
+
+          cat > ${PKG}/usr/share/applications/nothing-private-browser.desktop <<EOF
+          [Desktop Entry]
+          Name=Nothing Private Browser
+          Exec=/usr/local/bin/nothing-private-browser
+          Type=Application
+          Categories=Network;WebBrowser;
+          EOF
+
+          dpkg-deb --build --root-owner-group ${PKG} \
+            dist/nothing-private-browser_${VERSION}_amd64.deb
+
+      - name: Package tarball
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [[ "$VERSION" == "main" || "$VERSION" == "master" || -z "$VERSION" ]] && VERSION="0.0.0"
+          mkdir -p dist/nothing-private-browser-${VERSION}-linux-x86_64
+          cp build/nothing-private-browser dist/nothing-private-browser-${VERSION}-linux-x86_64/
+          tar -czf dist/nothing-private-browser-${VERSION}-linux-x86_64.tar.gz \
+            -C dist nothing-private-browser-${VERSION}-linux-x86_64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          path: |
+            dist/nothing-private-browser_*.deb
+            dist/nothing-private-browser-*-linux-x86_64.tar.gz
+
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.6.3"
+          host: windows
+          target: desktop
+          arch: win64_msvc2019_64
+          modules: "qtwebengine qtwebchannel qtpositioning"
+          cache: true
+          dir: "C:/Qt"
+
+      - name: Find Qt and configure
+        shell: powershell
+        run: |
+          $cmakeDir = Get-ChildItem "C:\Qt" -Recurse -Filter "Qt6Config.cmake" |
+                      Select-Object -First 1 -ExpandProperty DirectoryName
+          Write-Host "Qt cmake dir: $cmakeDir"
+          echo "QT_CMAKE_DIR=$cmakeDir" >> $env:GITHUB_ENV
+
+          $qtRoot = Split-Path (Split-Path (Split-Path $cmakeDir))
+          Write-Host "Qt root: $qtRoot"
+          echo "QT_ROOT=$qtRoot" >> $env:GITHUB_ENV
+          echo "QT_BIN=$qtRoot\bin" >> $env:GITHUB_ENV
+
+      - name: Configure
+        shell: cmd
+        run: |
+          mkdir build-win
+          cd build-win
+          cmake .. ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_PREFIX_PATH="%QT_CMAKE_DIR%" ^
+            -G "Visual Studio 17 2022" ^
+            -A x64
+
+      - name: Build
+        shell: cmd
+        run: cmake --build build-win --config Release --parallel --target nothing-private-browser
+
+      - name: Package
+        shell: powershell
+        run: |
+          $version = "${{ github.ref_name }}" -replace "^v", ""
+          if ([string]::IsNullOrEmpty($version) -or $version -eq "main") { $version = "dev" }
+
+          $outDir = "dist\nothing-private-browser-win64"
+          New-Item -ItemType Directory -Force $outDir
+
+          Copy-Item "build-win\Release\nothing-private-browser.exe" "$outDir\"
+
+          $wdqt = Get-ChildItem "C:\Qt" -Recurse -Filter "windeployqt.exe" |
+                  Select-Object -First 1 -ExpandProperty FullName
+          Write-Host "windeployqt: $wdqt"
+          & $wdqt --release --no-compiler-runtime "$outDir\nothing-private-browser.exe"
+
+          @("QtWebEngineProcess.exe","resources","translations\qtwebengine_locales") | ForEach-Object {
+            $src = Join-Path $env:QT_ROOT $_
+            if (Test-Path $src) { Copy-Item -Recurse -Force $src "$outDir\" }
+          }
+
+          Compress-Archive `
+            -Path "$outDir\*" `
+            -DestinationPath "dist\nothing-private-browser-${version}-windows-x64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: dist\nothing-private-browser-*-windows-x64.zip
+
+  build-macos:
+    name: Build macOS
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.6.3"
+          host: mac
+          target: desktop
+          arch: clang_64
+          modules: "qtwebengine qtwebchannel qtpositioning"
+          cache: true
+          dir: "${{ github.workspace }}/Qt"
+
+      - name: Find Qt root
+        run: |
+          QT_ROOT=$(find ${{ github.workspace }}/Qt -name "macdeployqt" -type f | head -1 | xargs dirname | xargs dirname)
+          echo "QT_ROOT=$QT_ROOT" >> $GITHUB_ENV
+          echo "QT_BIN=$QT_ROOT/bin" >> $GITHUB_ENV
+          echo "Qt root: $QT_ROOT"
+
+      - name: Configure
+        run: |
+          mkdir -p build-mac
+          cmake -B build-mac \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT"
+
+      - name: Build
+        run: cmake --build build-mac --parallel --target nothing-private-browser
+
+      - name: Package .dmg
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [ -z "$VERSION" ] && VERSION="dev"
+          mkdir -p dist
+
+          APP="build-mac/nothing-private-browser.app"
+
+          cat > "${APP}/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleExecutable</key><string>nothing-private-browser</string>
+            <key>CFBundleIdentifier</key><string>dev.nothingbrowser.private</string>
+            <key>CFBundleName</key><string>Nothing Private Browser</string>
+            <key>CFBundleVersion</key><string>${VERSION}</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>NSHighResolutionCapable</key><true/>
+          </dict></plist>
+          EOF
+
+          "$QT_BIN/macdeployqt" "$APP" -dmg -always-overwrite
+          mv build-mac/nothing-private-browser.dmg \
+            dist/nothing-private-browser-${VERSION}-macos.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: dist/nothing-private-browser-*-macos.dmg
+
+  release:
+    name: Publish Release
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Build changelog from commits
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s" --no-merges | head -30)
+          else
+            COMMITS=$(git log --pretty=format:"- %s" --no-merges | head -30)
+          fi
+          echo "NOTES<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: "Nothing Private Browser ${{ github.ref_name }}"
+          body: |
+            ## Nothing Private Browser ${{ github.ref_name }}
+            > Does nothing... except everything that matters.
+
+            ### What's changed
+            ${{ steps.changelog.outputs.NOTES }}
+
+            ---
+
+            ### Install
+
+            **Linux (deb)**
+
+                sudo dpkg -i nothing-private-browser_*_amd64.deb
+
+            **Linux (tar.gz)**
+
+                tar -xzf nothing-private-browser-*-linux-x86_64.tar.gz
+                cd nothing-private-browser-*-linux-x86_64
+                ./nothing-private-browser
+
+            **Windows:** Download `.zip` → extract → run `nothing-private-browser.exe`
+
+            **macOS:** Download `.dmg` → drag to Applications
+
+          files: |
+            release-artifacts/linux-build/*.deb
+            release-artifacts/linux-build/*.tar.gz
+            release-artifacts/windows-build/*.zip
+            release-artifacts/macos-build/*.dmg
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
