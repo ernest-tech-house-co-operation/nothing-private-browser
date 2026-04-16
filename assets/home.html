@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Home</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a0a;
+    color: #e8e8e8;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #bg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    object-fit: cover;
+    opacity: 0.15;
+    pointer-events: none;
+    user-select: none;
+    z-index: 0;
+  }
+
+  .content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 32px;
+    text-align: center;
+  }
+
+  #portrait {
+    width: auto;
+    height: 180px;
+    border-radius: 8px;
+    object-fit: cover;
+    display: block;
+  }
+
+  #logo {
+    height: 64px;
+    width: auto;
+  }
+
+  h1 {
+    color: #00ff88;
+    font-size: 32px;
+    font-weight: bold;
+    letter-spacing: 2px;
+  }
+
+  p.tagline {
+    color: #666666;
+    font-size: 16px;
+    font-style: italic;
+  }
+
+  .badge {
+    color: #00ff88;
+    background: #0d1f14;
+    border: 1px solid #00ff88;
+    border-radius: 20px;
+    padding: 6px 20px;
+    font-size: 12px;
+    margin-top: 8px;
+  }
+
+  p.family {
+    color: #666666;
+    font-size: 10px;
+    letter-spacing: 1px;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+
+  <img id="bg" src="qrc:///main_alysia.jpeg" alt=""/>
+
+  <div class="content">
+    <img id="portrait" src="qrc:///elysia.jpeg" alt="Elysia"/>
+    <img id="logo" src="qrc:///logomain.png" alt="Logo"/>
+    <h1>Nothing Private Browser</h1>
+    <p class="tagline">does nothing except everything</p>
+    <div class="badge">🔒&nbsp; Fingerprint Spoofed &nbsp;·&nbsp; Off-Record Profile &nbsp;·&nbsp; Purge on Close</div>
+    <p class="family">✦ part of the Nothing family ✦</p>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,12 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>logomain.png</file>
+        <file>elysia.jpeg</file>
+        <file>main_alysia.jpeg</file>
+        <file>icons/3-dots-bounce.svg</file>
+    </qresource>
+    <qresource prefix="/">
+        <file>home.html</file>
+    </qresource>
+</RCC>
