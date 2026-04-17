@@ -235,11 +235,11 @@ jobs:
       - name: Sync existing pool from R2
         run: |
           mkdir -p apt-repo/pool/main apt-repo/dists/stable/main/binary-amd64
-          wrangler r2 object list nothing-browser-repo --prefix pool/main/ \
+          wrangler r2 object list nothing-browser --prefix pool/main/ \
             --json 2>/dev/null | \
             jq -r '.[].key' | while read key; do
               mkdir -p "apt-repo/$(dirname $key)"
-              wrangler r2 object get nothing-browser-repo/"$key" \
+              wrangler r2 object get nothing-browser /"$key" \
                 --file "apt-repo/$key" 2>/dev/null || true
             done
         env:
@@ -282,7 +282,7 @@ jobs:
         run: |
           find apt-repo -type f | while read file; do
             KEY="${file#apt-repo/}"
-            wrangler r2 object put nothing-browser-repo/"$KEY" \
+            wrangler r2 object put nothing-browser/"$KEY" \
               --file "$file" \
               --remote
           done
