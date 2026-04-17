@@ -178,37 +178,28 @@ jobs:
         run: cmake --build build-mac --parallel --target nothing-private-browser
 
       - name: Package .dmg
-  run: |
-    VERSION="${GITHUB_REF_NAME#v}"
-    [ -z "$VERSION" ] && VERSION="dev"
-    mkdir -p dist
-
-    APP="build-mac/nothing-private-browser.app"
-    mkdir -p "${APP}/Contents/MacOS"
-    mkdir -p "${APP}/Contents/Resources"
-
-    cp build-mac/nothing-private-browser "${APP}/Contents/MacOS/"
-
-    cat > "${APP}/Contents/Info.plist" <<EOF
-    <?xml version="1.0" encoding="UTF-8"?>
-    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-    <plist version="1.0"><dict>
-      <key>CFBundleExecutable</key><string>nothing-private-browser</string>
-      <key>CFBundleIdentifier</key><string>dev.nothingbrowser.private</string>
-      <key>CFBundleName</key><string>Nothing Private Browser</string>
-      <key>CFBundleVersion</key><string>${VERSION}</string>
-      <key>CFBundlePackageType</key><string>APPL</string>
-      <key>NSHighResolutionCapable</key><true/>
-    </dict></plist>
-    EOF
-
-    "$QT_BIN/macdeployqt" "$APP" -dmg -always-overwrite
-    mv build-mac/nothing-private-browser.dmg dist/nothing-private-browser-${VERSION}-macos.dmg
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos-build
-          path: dist/nothing-private-browser-*-macos.dmg
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [ -z "$VERSION" ] && VERSION="dev"
+          mkdir -p dist
+          APP="build-mac/nothing-private-browser.app"
+          mkdir -p "${APP}/Contents/MacOS"
+          mkdir -p "${APP}/Contents/Resources"
+          cp build-mac/nothing-private-browser "${APP}/Contents/MacOS/"
+          cat > "${APP}/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleExecutable</key><string>nothing-private-browser</string>
+            <key>CFBundleIdentifier</key><string>dev.nothingbrowser.private</string>
+            <key>CFBundleName</key><string>Nothing Private Browser</string>
+            <key>CFBundleVersion</key><string>${VERSION}</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>NSHighResolutionCapable</key><true/>
+          </dict></plist>
+          EOF
+          "$QT_BIN/macdeployqt" "$APP" -dmg -always-overwrite
+          mv build-mac/nothing-private-browser.dmg dist/nothing-private-browser-${VERSION}-macos.dmg
 
   release:
     name: Publish Release
