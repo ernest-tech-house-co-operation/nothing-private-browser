@@ -254,6 +254,8 @@ jobs:
 
       - name: Generate apt metadata
         run: |
+          export GPG_TTY=$(tty || true)
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
           cd apt-repo
           dpkg-scanpackages --arch amd64 pool/main > dists/stable/main/binary-amd64/Packages
           gzip -k dists/stable/main/binary-amd64/Packages
@@ -266,9 +268,11 @@ jobs:
             -o APT::FTPArchive::Release::Components="main" \
             -o APT::FTPArchive::Release::Description="Nothing Browser apt repository" \
             release dists/stable > dists/stable/Release
-          gpg --default-key ernesttechhouse@gmail.com \
+          gpg --batch --yes --pinentry-mode loopback \
+              --default-key ernesttechhouse@gmail.com \
               -abs -o dists/stable/Release.gpg dists/stable/Release
-          gpg --default-key ernesttechhouse@gmail.com \
+          gpg --batch --yes --pinentry-mode loopback \
+              --default-key ernesttechhouse@gmail.com \
               --clearsign -o dists/stable/InRelease dists/stable/Release
 
       - name: Export public key
