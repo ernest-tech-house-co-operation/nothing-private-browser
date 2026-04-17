@@ -13,11 +13,10 @@ jobs:
   build-linux:
     name: Build Linux
     runs-on: ubuntu-24.04
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Qt6 + deps via apt
+      - name: Install Qt6 + deps
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y \
@@ -26,15 +25,9 @@ jobs:
             libqt6webenginewidgets6 \
             libqt6webenginecore6 \
             qt6-webengine-dev-tools \
-            libgl-dev \
-            libegl-dev \
-            libglu1-mesa-dev \
-            libxkbcommon-dev \
-            libxkbcommon-x11-dev \
-            cmake \
-            ninja-build \
-            build-essential \
-            dpkg-dev
+            libgl-dev libegl-dev libglu1-mesa-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev \
+            cmake ninja-build build-essential dpkg-dev
 
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -G Ninja
@@ -99,7 +92,6 @@ jobs:
   build-windows:
     name: Build Windows
     runs-on: windows-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -119,11 +111,8 @@ jobs:
         run: |
           $cmakeDir = Get-ChildItem "C:\Qt" -Recurse -Filter "Qt6Config.cmake" |
                       Select-Object -First 1 -ExpandProperty DirectoryName
-          Write-Host "Qt cmake dir: $cmakeDir"
           echo "QT_CMAKE_DIR=$cmakeDir" >> $env:GITHUB_ENV
-
           $qtRoot = Split-Path (Split-Path (Split-Path $cmakeDir))
-          Write-Host "Qt root: $qtRoot"
           echo "QT_ROOT=$qtRoot" >> $env:GITHUB_ENV
           echo "QT_BIN=$qtRoot\bin" >> $env:GITHUB_ENV
 
@@ -132,11 +121,7 @@ jobs:
         run: |
           mkdir build-win
           cd build-win
-          cmake .. ^
-            -DCMAKE_BUILD_TYPE=Release ^
-            -DCMAKE_PREFIX_PATH="%QT_CMAKE_DIR%" ^
-            -G "Visual Studio 17 2022" ^
-            -A x64
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%QT_CMAKE_DIR%" -G "Visual Studio 17 2022" -A x64
 
       - name: Build
         shell: cmd
@@ -147,25 +132,16 @@ jobs:
         run: |
           $version = "${{ github.ref_name }}" -replace "^v", ""
           if ([string]::IsNullOrEmpty($version) -or $version -eq "main") { $version = "dev" }
-
           $outDir = "dist\nothing-private-browser-win64"
           New-Item -ItemType Directory -Force $outDir
-
           Copy-Item "build-win\Release\nothing-private-browser.exe" "$outDir\"
-
-          $wdqt = Get-ChildItem "C:\Qt" -Recurse -Filter "windeployqt.exe" |
-                  Select-Object -First 1 -ExpandProperty FullName
-          Write-Host "windeployqt: $wdqt"
+          $wdqt = Get-ChildItem "C:\Qt" -Recurse -Filter "windeployqt.exe" | Select-Object -First 1 -ExpandProperty FullName
           & $wdqt --release --no-compiler-runtime "$outDir\nothing-private-browser.exe"
-
           @("QtWebEngineProcess.exe","resources","translations\qtwebengine_locales") | ForEach-Object {
             $src = Join-Path $env:QT_ROOT $_
             if (Test-Path $src) { Copy-Item -Recurse -Force $src "$outDir\" }
           }
-
-          Compress-Archive `
-            -Path "$outDir\*" `
-            -DestinationPath "dist\nothing-private-browser-${version}-windows-x64.zip"
+          Compress-Archive -Path "$outDir\*" -DestinationPath "dist\nothing-private-browser-${version}-windows-x64.zip"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -175,7 +151,6 @@ jobs:
   build-macos:
     name: Build macOS
     runs-on: macos-14
-
     steps:
       - uses: actions/checkout@v4
 
@@ -195,14 +170,9 @@ jobs:
           QT_ROOT=$(find ${{ github.workspace }}/Qt -name "macdeployqt" -type f | head -1 | xargs dirname | xargs dirname)
           echo "QT_ROOT=$QT_ROOT" >> $GITHUB_ENV
           echo "QT_BIN=$QT_ROOT/bin" >> $GITHUB_ENV
-          echo "Qt root: $QT_ROOT"
 
       - name: Configure
-        run: |
-          mkdir -p build-mac
-          cmake -B build-mac \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$QT_ROOT"
+        run: cmake -B build-mac -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT"
 
       - name: Build
         run: cmake --build build-mac --parallel --target nothing-private-browser
@@ -212,9 +182,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           [ -z "$VERSION" ] && VERSION="dev"
           mkdir -p dist
-
           APP="build-mac/nothing-private-browser.app"
-
           cat > "${APP}/Contents/Info.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -227,10 +195,8 @@ jobs:
             <key>NSHighResolutionCapable</key><true/>
           </dict></plist>
           EOF
-
           "$QT_BIN/macdeployqt" "$APP" -dmg -always-overwrite
-          mv build-mac/nothing-private-browser.dmg \
-            dist/nothing-private-browser-${VERSION}-macos.dmg
+          mv build-mac/nothing-private-browser.dmg dist/nothing-private-browser-${VERSION}-macos.dmg
 
       - uses: actions/upload-artifact@v4
         with:
@@ -254,7 +220,77 @@ jobs:
         with:
           path: release-artifacts
 
-      - name: Build changelog from commits
+      # ── APT REPO ─────────────────────────────────────────────────────────────
+
+      - name: Install apt repo tools
+        run: sudo apt-get install -y dpkg-dev apt-utils gnupg
+
+      - name: Import GPG key
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          KEY_ID=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec/{print $5; exit}')
+          echo "${KEY_ID}:6:" | gpg --import-ownertrust
+
+      - name: Install wrangler
+        run: npm install -g wrangler
+
+      - name: Sync existing pool from R2
+        run: |
+          mkdir -p apt-repo/pool/main apt-repo/dists/stable/main/binary-amd64
+          wrangler r2 object list nothing-browser-repo --prefix pool/main/ \
+            --json 2>/dev/null | \
+            jq -r '.[].key' | while read key; do
+              mkdir -p "apt-repo/$(dirname $key)"
+              wrangler r2 object get nothing-browser-repo/"$key" \
+                --file "apt-repo/$key" 2>/dev/null || true
+            done
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+
+      - name: Add new .deb to pool
+        run: |
+          find release-artifacts/linux-build -name "*.deb" -type f | while read deb; do
+            cp "$deb" apt-repo/pool/main/
+          done
+
+      - name: Generate apt metadata
+        run: |
+          cd apt-repo
+          dpkg-scanpackages --arch amd64 pool/main > dists/stable/main/binary-amd64/Packages
+          gzip -k dists/stable/main/binary-amd64/Packages
+          apt-ftparchive \
+            -o APT::FTPArchive::Release::Origin="Ernest Tech House" \
+            -o APT::FTPArchive::Release::Label="Nothing Browser" \
+            -o APT::FTPArchive::Release::Suite="stable" \
+            -o APT::FTPArchive::Release::Codename="stable" \
+            -o APT::FTPArchive::Release::Architectures="amd64" \
+            -o APT::FTPArchive::Release::Components="main" \
+            -o APT::FTPArchive::Release::Description="Nothing Browser apt repository" \
+            release dists/stable > dists/stable/Release
+          gpg --default-key ernesttechhouse@gmail.com \
+              -abs -o dists/stable/Release.gpg dists/stable/Release
+          gpg --default-key ernesttechhouse@gmail.com \
+              --clearsign -o dists/stable/InRelease dists/stable/Release
+
+      - name: Export public key
+        run: gpg --armor --export ernesttechhouse@gmail.com > apt-repo/nothing-browser-key.gpg
+
+      - name: Upload apt repo to R2
+        run: |
+          find apt-repo -type f | while read file; do
+            KEY="${file#apt-repo/}"
+            wrangler r2 object put nothing-browser-repo/"$KEY" \
+              --file "$file" \
+              --remote
+          done
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+
+      # ── GITHUB RELEASE ────────────────────────────────────────────────────────
+
+      - name: Build changelog
         id: changelog
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
@@ -279,7 +315,21 @@ jobs:
 
             ---
 
-            ### Install
+            ### Install via apt (recommended)
+
+            ```sh
+            curl -fsSL https://pub-5119122a931748c3b649ad4ca5aab522.r2.dev/nothing-browser-key.gpg \
+              | sudo gpg --dearmor -o /usr/share/keyrings/nothing-browser.gpg
+
+            echo 'deb [signed-by=/usr/share/keyrings/nothing-browser.gpg] https://pub-5119122a931748c3b649ad4ca5aab522.r2.dev stable main' \
+              | sudo tee /etc/apt/sources.list.d/nothing-browser.list
+
+            sudo apt update && sudo apt install nothing-private-browser
+            ```
+
+            ---
+
+            ### Install manually
 
             **Linux (deb)**
 
