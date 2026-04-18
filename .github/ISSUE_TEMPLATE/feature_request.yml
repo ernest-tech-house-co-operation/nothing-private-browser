@@ -1,0 +1,79 @@
+name: ✨ Feature Request
+description: Suggest a feature for Nothing Browser, Nothing Private Browser, or Piggy
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Before submitting:
+        - Check if the feature already exists
+        - For Piggy features: remember that binary changes must come first
+
+  - type: dropdown
+    id: product
+    attributes:
+      label: Product
+      description: Which product needs this feature?
+      options:
+        - Nothing Browser (UI)
+        - Nothing Private Browser
+        - Piggy (Library)
+        - Documentation
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this solve? What can't you do now?
+      placeholder: |
+        I can't currently do X because...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: What should the feature do? How would it work?
+      placeholder: |
+        Add a new function called Y that does Z...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other approaches have you considered?
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Feature Scope
+      description: Does this require binary changes?
+      options:
+        - Library-only change (TypeScript)
+        - Binary change required (C++)
+        - Both (library + binary)
+        - Documentation only
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Screenshots, mockups, examples from other tools
+
+  - type: checkboxes
+    id: verification
+    attributes:
+      label: Verification
+      options:
+        - label: I have searched for existing feature requests
+          required: true
+        - label: For Piggy features, I understand binary must support it first
+          required: false

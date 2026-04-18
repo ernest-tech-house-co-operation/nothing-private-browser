@@ -201,6 +201,11 @@ jobs:
           "$QT_BIN/macdeployqt" "$APP" -dmg -always-overwrite
           mv build-mac/nothing-private-browser.dmg dist/nothing-private-browser-${VERSION}-macos.dmg
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: dist/nothing-private-browser-*-macos.dmg
+
   release:
     name: Publish Release
     needs: [build-linux, build-windows, build-macos]
@@ -228,6 +233,8 @@ jobs:
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
           KEY_FP=$(gpg --list-secret-keys --with-colons --fingerprint | awk -F: '/^fpr/{print $10; exit}')
           echo "${KEY_FP}:6:" | gpg --import-ownertrust
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          gpgconf --kill gpg-agent
 
       - name: Install wrangler
         run: npm install -g wrangler
@@ -235,11 +242,11 @@ jobs:
       - name: Sync existing pool from R2
         run: |
           mkdir -p apt-repo/pool/main apt-repo/dists/stable/main/binary-amd64
-          wrangler r2 object list nothing-browser --prefix pool/main/ \
+          wrangler r2 object list nothing-private-browser --prefix pool/main/ \
             --json 2>/dev/null | \
             jq -r '.[].key' | while read key; do
               mkdir -p "apt-repo/$(dirname $key)"
-              wrangler r2 object get nothing-browser /"$key" \
+              wrangler r2 object get "$key" --bucket nothing-private-browser \
                 --file "apt-repo/$key" 2>/dev/null || true
             done
         env:
@@ -254,19 +261,18 @@ jobs:
 
       - name: Generate apt metadata
         run: |
-          export GPG_TTY=$(tty || true)
           echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
           cd apt-repo
           dpkg-scanpackages --arch amd64 pool/main > dists/stable/main/binary-amd64/Packages
           gzip -k dists/stable/main/binary-amd64/Packages
           apt-ftparchive \
             -o APT::FTPArchive::Release::Origin="Ernest Tech House" \
-            -o APT::FTPArchive::Release::Label="Nothing Browser" \
+            -o APT::FTPArchive::Release::Label="Nothing Private Browser" \
             -o APT::FTPArchive::Release::Suite="stable" \
             -o APT::FTPArchive::Release::Codename="stable" \
             -o APT::FTPArchive::Release::Architectures="amd64" \
             -o APT::FTPArchive::Release::Components="main" \
-            -o APT::FTPArchive::Release::Description="Nothing Browser apt repository" \
+            -o APT::FTPArchive::Release::Description="Nothing Private Browser apt repository" \
             release dists/stable > dists/stable/Release
           gpg --batch --yes --pinentry-mode loopback \
               --default-key ernesttechhouse@gmail.com \
@@ -276,13 +282,13 @@ jobs:
               --clearsign -o dists/stable/InRelease dists/stable/Release
 
       - name: Export public key
-        run: gpg --armor --export ernesttechhouse@gmail.com > apt-repo/nothing-browser-key.gpg
+        run: gpg --armor --export ernesttechhouse@gmail.com > apt-repo/nothing-private-browser-key.gpg
 
       - name: Upload apt repo to R2
         run: |
           find apt-repo -type f | while read file; do
             KEY="${file#apt-repo/}"
-            wrangler r2 object put nothing-browser/"$KEY" \
+            wrangler r2 object put nothing-private-browser/"$KEY" \
               --file "$file" \
               --remote
           done
@@ -320,11 +326,11 @@ jobs:
             ### Install via apt (recommended)
 
             ```sh
-            curl -fsSL https://pub-5119122a931748c3b649ad4ca5aab522.r2.dev/nothing-browser-key.gpg \
-              | sudo gpg --dearmor -o /usr/share/keyrings/nothing-browser.gpg
+            curl -fsSL https://pub-9ee932a7740a4b149cb9643edfd10edc.r2.dev/nothing-private-browser-key.gpg \
+              | sudo gpg --dearmor -o /usr/share/keyrings/nothing-private-browser.gpg
 
-            echo 'deb [signed-by=/usr/share/keyrings/nothing-browser.gpg] https://pub-5119122a931748c3b649ad4ca5aab522.r2.dev stable main' \
-              | sudo tee /etc/apt/sources.list.d/nothing-browser.list
+            echo 'deb [signed-by=/usr/share/keyrings/nothing-private-browser.gpg] https://pub-9ee932a7740a4b149cb9643edfd10edc.r2.dev stable main' \
+              | sudo tee /etc/apt/sources.list.d/nothing-private-browser.list
 
             sudo apt update && sudo apt install nothing-private-browser
             ```
